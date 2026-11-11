@@ -1,71 +1,50 @@
 # Audit logs
 
-Policies set the guardrails; the **Audit logs** screen is how you *review policy
-enforcement events across your organization* - every allow and deny, with **who**,
-**what**, **when**, and the **decision**.
+Policies set the guardrails; **Audit logs** is how you *review policy enforcement
+events across your organization* - every allow and deny, with who, what, when, and
+the decision.
 
 > *Audit logs are stored in Docker Cloud by default, capturing member actions,
 > timestamps, and IPs.*
 
 The console groups this under tabs - **Audit events**, **CSV exports**, **Audit
-delivery**, **History**, and **Export & connectors** - and lets you filter by
-**Date range**, **Activity**, **User**, **Harness**, and **Decision**.
+delivery**, **History**, **Export & connectors** - with filters for **Date range**,
+**Activity**, **User**, **Harness**, and **Decision**. That org-wide view is a
+console (and export/SIEM) feature.
 
-## Nothing to see when governance is off
+## The developer-side view: `sbx policy log`
 
-If AI governance is disabled, no policies are enforced, so nothing is recorded.
-Confirm by turning it off and reading the log:
-
-```bash terminal-id=host
-dgov disable
-```
+On a developer's machine, `sbx` exposes the local enforcement decisions the sandbox
+proxy made. After the network test earlier, look at what was blocked:
 
 ```bash terminal-id=host
-dgov audit ls
-```
-
-You get **0 matching records** - exactly what the console shows with the master
-switch off.
-
-## Turn it on, generate events, read the trail
-
-Re-enable governance and replay the two network requests from earlier so there's
-something to see:
-
-```bash terminal-id=host
-dgov enable
-```
-
-```bash terminal-id=host
-curl https://db.mysql.org:3306
-```
-
-```bash terminal-id=host
-curl https://api.datadoghq.com
-```
-
-Now read the audit log:
-
-```bash terminal-id=host
-dgov audit ls
+sbx policy log
 ```
 
 ```text no-run-button
-TIME (UTC)   USER          HARNESS  RESOURCE            ACTIVITY     DECISION
-just now     michelangelo  claude   db.mysql.org:3306   net:connect  DENY
-just now     michelangelo  claude   api.datadoghq.com   net:connect  ALLOW
-2 min ago    leonardo      codex    ./workdemo          fs:mount:rw  ALLOW
-5 min ago    leonardo      codex    ~/.aws              fs:mount:rw  DENY
+SANDBOX   TYPE     HOST          RULE                 REASON    COUNT
+catalog   network  db.mysql.org  denyredingtondbteam  explicit  1
+catalog   network  example.com   default-deny         implicit  1
 ```
 
-Each row is a policy decision. The **DENY** rows are your deny rules and
-default-deny doing their job - a blocked MySQL connection, a refused `~/.aws` mount.
+Each row is a policy decision: an **explicit** deny (the MySQL rule) and an
+**implicit** one (default-deny). Machine-readable output for piping into tooling:
+
+```bash terminal-id=host
+sbx policy log --json
+```
+
+```json no-run-button
+{"sandbox":"catalog","host":"api.datadoghq.com","decision":"allow","rule":"allowdatadog","count":12}
+{"sandbox":"catalog","host":"db.mysql.org","decision":"deny","rule":"denyredingtondbteam","count":1}
+{"sandbox":"catalog","host":"example.com","decision":"deny","rule":"default-deny","count":1}
+```
 
 > [!TIP]
-> In the real console you'd filter **Decision = Deny** to triage what agents are
-> *trying* to do that policy stops - a fast way to spot a misconfigured workflow or
-> a genuinely rogue agent. Those events can be exported (CSV) or streamed to a SIEM
-> via **Export & connectors**.
+> In the console you'd filter **Decision = Deny** to triage what agents are *trying*
+> to do that policy stops - a fast way to spot a misconfigured workflow or a rogue
+> agent - and stream those events to a SIEM via **Export & connectors**. `sbx policy
+> log --json` is the same signal, locally, for a single machine.
 
-The audit log is also the bridge to alerting: a `DENY` spike can page on-call. Next,
-the programmatic side - **governance as code**.
+A `deny` spike is the bridge to alerting. Next, the full programmatic flow -
+**governance as code**.

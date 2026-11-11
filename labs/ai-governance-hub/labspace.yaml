@@ -23,7 +23,8 @@ terminals:
     title: Terminal
     icon: terminal
 
-# Seed the virtual filesystem. `ls`/`cat` reflect these immediately.
+# Seed the virtual filesystem. `ls`/`cat` reflect these immediately. The JSON
+# files are real Governance API request bodies you POST with `curl -d @<file>`.
 files:
   README.md: |
     # Docker AI Governance - admin workspace (simulated)
@@ -31,25 +32,51 @@ files:
     Everything here is scripted - no real Docker, org, network, or Governance API
     is contacted, so every learner sees the same allow/deny decisions.
 
-    The lab gives you one command, `dgov`, a thin simulated CLI over the same
-    control plane the Docker Hub console writes to. It mirrors the five console
-    screens:
+    Two real "front doors" to AI Governance:
+      * the Admin Console (web UI) at app.docker.com - shown here as screenshots
+      * the Governance API at https://hub.docker.com/v2 - driven here with curl
 
-      dgov status | enable | disable      the Manage screen (master switch)
-      dgov net ls | net show <name>       Network access policies
-      dgov fs  ls | fs  show <name>       Filesystem access policies
-      dgov mcp ls | mcp show <name>       MCP access policies (Cedar)
-      dgov audit ls                       Audit logs
+    And the developer side - the sbx CLI - reads and enforces what the org sets:
+      sbx policy ls        view the synced org policy
+      sbx policy reset     force a re-sync from the org
+      sbx policy log       see what the sandbox proxy allowed / denied
 
-    Run `dgov help` any time.
-  blockpaste.json: |
+    The JSON files here are real API request bodies (POST them with curl -d @file).
+  creds.json: |
     {
-      "name": "blockpaste",
-      "type": "network",
-      "scope": "organization",
-      "rules": [
-        { "action": "deny", "protocols": ["tcp", "udp"], "match": "paste.ee" }
-      ]
+      "identifier": "<your-docker-username>",
+      "secret": "<dckr_pat_your_personal_access_token>"
+    }
+  network-policy.json: |
+    {
+      "name": "blockexfil",
+      "scope": { "teams": [] },
+      "allowlist_v0": {
+        "rules": [
+          {
+            "name": "deny paste sites",
+            "actions": ["connect:tcp", "connect:udp"],
+            "decision": "deny",
+            "resources": ["paste.ee", "pastebin.com"]
+          }
+        ]
+      }
+    }
+  allow-rule.json: |
+    {
+      "name": "allow datadog",
+      "actions": ["connect:tcp"],
+      "decision": "allow",
+      "resources": ["api.datadoghq.com"]
+    }
+  mcp-policy.json: |
+    {
+      "name": "demo-github-readonly",
+      "scope": { "teams": [] },
+      "cedar_v1": {
+        "schema_url": "https://schemas.docker.com/policy/cedar/v1/mcp/v0",
+        "text": "permit(principal, action == MCP::Action::\"call_tool\", resource is MCP::Tool)\n  when { resource.server == \"github\" && resource.tool in [\"search_repositories\",\"get_file_contents\",\"list_issues\"] };"
+      }
     }
 
 # Ordered instruction pages (markdown), rendered in the left-hand panel.

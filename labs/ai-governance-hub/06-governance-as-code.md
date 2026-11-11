@@ -1,64 +1,63 @@
 # Governance as code (the API)
 
-The console is one front door. The **Docker AI Governance API** is the other - the
-same control plane over HTTP. Both write to the **same source of truth**, so a policy
-created by either shows up everywhere.
+You've used the Governance API piecemeal; here's the **whole flow** in order - the
+pattern you'd put in a script or CI job so policies live in version control, not just
+in someone's browser. Base URL: `https://hub.docker.com/v2`. Reference:
+[docs.docker.com/reference/api/ai-governance](https://docs.docker.com/reference/api/ai-governance/latest/).
 
-```text no-run-button
-   ┌──────────────┐
-   │ Admin Console│──┐
-   │ (point/click)│  │
-   └──────────────┘  ├─▶  one org policy store  ──sync──▶  every sandbox
-   ┌──────────────┐  │    (network · fs · mcp)
-   │ Governance   │──┘
-   │ API (curl)   │
-   └──────────────┘
-```
+## 1. Authenticate → bearer token
 
-Use the API when you want **governance as code**: policies in version control,
-created in CI, managed by admin tooling instead of by hand.
-
-## Authenticate, then write a policy
-
-Log in with org credentials (simulated):
+`creds.json` holds a Docker username and a Personal Access Token (`dckr_pat_…`) or
+Organization Access Token (`dckr_oat_…`):
 
 ```bash terminal-id=host
-docker login
+cat creds.json
 ```
-
-The lab seeds a policy document - take a look:
 
 ```bash terminal-id=host
-cat blockpaste.json
+curl -X POST https://hub.docker.com/v2/auth/token -H "Content-Type: application/json" -d @creds.json
 ```
 
-POST it to the Governance API. This is the exact same `blockpaste` policy you could
-create from the Network access screen:
+Capture the `access_token` as `$TOKEN` and send it as `Authorization: Bearer $TOKEN`
+on every call.
+
+## 2. Create a policy
+
+A policy is `allowlist_v0` (network/filesystem) or `cedar_v1` (MCP). POST the body to
+the `/policies` collection; the API returns **201** with the server-assigned `id`:
 
 ```bash terminal-id=host
-curl -X POST https://hub.docker.com/v2/orgs/whalecollab/governance/policies -d @blockpaste.json
+curl -X POST https://hub.docker.com/v2/orgs/whalecollab/governance/policies -H "Authorization: Bearer $TOKEN" -d @network-policy.json
 ```
 
-```text no-run-button
-> POST /v2/orgs/whalecollab/governance/policies
-< HTTP/1.1 201 Created
-{ "id": "pol_7hk2...", "name": "blockpaste", "type": "network", "scope": "organization", "rules": 1 }
-```
+## 3. Add a rule to a policy
 
-Because it's the same store, the policy is immediately visible through `dgov`:
+Rules are a sub-resource. POST to `…/policies/{id}/rules`:
 
 ```bash terminal-id=host
-dgov net ls
+curl -X POST https://hub.docker.com/v2/orgs/whalecollab/governance/policies/pol_06gawnt8tw1pzxe3e69y58jsr5df/rules -H "Authorization: Bearer $TOKEN" -d @allow-rule.json
+```
+
+## 4. List what the org has
+
+```bash terminal-id=host
+curl https://hub.docker.com/v2/orgs/whalecollab/governance/policies -H "Authorization: Bearer $TOKEN"
 ```
 
 > [!NOTE]
-> This mirrors a real pattern: a `setup-policies.sh` script (or a CI job) that
-> authenticates once, then `POST`s each policy and its rules. The console is for
-> one-off human changes; the API is for repeatable, reviewable, automated ones.
+> The console and the API write to the **same source of truth**. A policy created
+> here shows up in the Admin Console immediately, and vice-versa. The full verb set
+> is `GET`/`POST` on the collection, and `GET`/`PATCH`/`DELETE` on a policy
+> (`…/policies/{id}`) and on a rule (`…/policies/{id}/rules/{rule_id}`).
 
-> [!IMPORTANT]
-> The API is still **governed by the master switch**. Creating a policy by API
-> doesn't enforce it any sooner - `dgov status` must say **ENABLED** for sandboxes
-> to apply it, exactly as in the console.
+## 5. Developers pick it up at login
 
-Finally, let's tie the whole model together.
+Nothing you POST is enforced until a developer's machine syncs it - which happens at
+`sbx login`, or on demand:
+
+```bash terminal-id=host
+sbx policy reset
+```
+
+That's governance-as-code: author in Git → `POST` from CI → `sbx` syncs → every
+sandbox enforces. Finally, let's tie the model together.

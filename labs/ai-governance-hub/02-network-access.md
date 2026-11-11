@@ -1,54 +1,48 @@
 # Network access
 
-The **Network access** screen controls *which URLs coding agents can reach through
-the sandbox*. It's a list of **policies**, each with one or more **rules**, scoped to
-the whole Organization or to specific Teams.
+The **Network access** console screen controls *which URLs coding agents can reach
+through the sandbox* - a list of **policies**, each a set of **rules**. In the API,
+a network policy is an `allowlist_v0` object whose rules carry `actions`
+(`connect:tcp` / `connect:udp`), a `decision` (`allow` / `deny`), and `resources`
+(hosts, `*.wildcards`, or CIDRs).
 
-List the org's network policies:
+## Read a policy with the API
 
-```bash terminal-id=host
-dgov net ls
-```
-
-You'll see the seeded policies - one **deny** and several **allow**:
-
-```text no-run-button
-POLICY                 SCOPE         RULES     UPDATED
-denyredingtondbteam    Organization  1 deny    Sep 17, 2026
-allowdatadog           Organization  1 allow   Sep 09, 2026
-allowfirecrawl         Organization  1 allow   Aug 18, 2026
-...
-```
-
-## A policy's rules
-
-Open the deny policy to see its rule detail - action, protocols, and what it
-matches:
+The org `whalecollab` already has a deny policy, `denyredingtondbteam`. Fetch it by
+id (send your bearer token from the intro):
 
 ```bash terminal-id=host
-dgov net show denyredingtondbteam
+curl https://hub.docker.com/v2/orgs/whalecollab/governance/policies/pol_06gawnt8tw1pzxe3e69y58jsr5df -H "Authorization: Bearer $TOKEN"
 ```
 
-```text no-run-button
-  ACTION  NAME            PROTO     MATCHES
-  Deny    denyredington   TCP, UDP  All traffic to *.mysql.org
+```json no-run-button
+"allowlist_v0": {
+  "domain": "network",
+  "rules": [ { "name": "denyredington",
+              "actions": ["connect:tcp","connect:udp"],
+              "decision": "deny", "resources": ["*.mysql.org"] } ]
+}
 ```
-
-In the console, creating a rule lets you pick: **Decision** (Allow / Deny),
-**Type** (HTTP, or *All traffic* for any port/method/path), **Protocols**
-(TCP / UDP / Both), and **Destinations** (a host or CIDR, e.g. `github.com` or
-`10.0.0.0/8`).
 
 > [!IMPORTANT]
-> **Deny always overrides allow**, and anything not matched by an allow rule is
-> blocked by **default-deny**. So you don't enumerate every bad destination - you
-> allow the few you trust, and everything else is denied automatically.
+> **Deny always wins over allow**, and anything no `allow` rule matches is blocked by
+> **default-deny**. So you allow the few destinations you trust and everything else
+> is refused automatically.
+
+The same rules, synced to the developer's machine, are visible via `sbx`:
+
+```bash terminal-id=host
+sbx policy ls
+```
 
 ## See it enforced
 
-With governance **enabled**, send two requests the way a sandboxed agent would. The
-first hits the MySQL host the deny rule covers; the second hits Datadog, which has an
-allow rule:
+Start a sandboxed agent and make the requests an agent would. The proxy evaluates
+each against the org policy:
+
+```bash terminal-id=host
+sbx run claude
+```
 
 ```bash terminal-id=host
 curl https://db.mysql.org:3306
@@ -58,36 +52,31 @@ curl https://db.mysql.org:3306
 curl https://api.datadoghq.com
 ```
 
-The first is **blocked (403)** by `denyredingtondbteam`; the second is **allowed** by
-`allowdatadog`. Now turn the master switch off and try the blocked one again:
+The MySQL host is **403** (matched `denyredingtondbteam`); Datadog is **200**
+(allowed by `allowdatadog`). Leave the sandbox:
 
 ```bash terminal-id=host
-dgov disable
+exit
+```
+
+## Create a policy with the API
+
+Block data-exfiltration paste sites org-wide. The request body is seeded as
+`network-policy.json` (a real `allowlist_v0` deny rule) - take a look, then POST it:
+
+```bash terminal-id=host
+cat network-policy.json
 ```
 
 ```bash terminal-id=host
-curl https://db.mysql.org:3306
+curl -X POST https://hub.docker.com/v2/orgs/whalecollab/governance/policies -H "Authorization: Bearer $TOKEN" -d @network-policy.json
 ```
 
-Ungoverned, it returns **200** - the policy still exists, but nothing enforces it.
-Re-enable governance before moving on:
+The API returns **201** with the new policy and its server-assigned `id`. To add
+another rule to an existing policy, POST to its `/rules` sub-resource:
 
 ```bash terminal-id=host
-dgov enable
-```
-
-## Create a policy
-
-Block a data-exfiltration paste site org-wide. Deny rules take effect immediately:
-
-```bash terminal-id=host
-dgov net create --name blockpaste --deny paste.ee
-```
-
-List again - `blockpaste` now sits at the top of the Network access screen:
-
-```bash terminal-id=host
-dgov net ls
+curl -X POST https://hub.docker.com/v2/orgs/whalecollab/governance/policies/pol_06gawnt8tw1pzxe3e69y58jsr5df/rules -H "Authorization: Bearer $TOKEN" -d @allow-rule.json
 ```
 
 Next: the same model for the **filesystem**.

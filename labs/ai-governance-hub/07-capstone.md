@@ -1,65 +1,67 @@
 # Putting it together
 
-You've driven every screen of Docker Hub's **AI Governance** console from the
-terminal. The whole model is small:
+You've driven Docker **AI Governance** the real way - the **Governance API** for the
+admin side, **`sbx`** for the developer side, and the **Admin Console** (screenshots)
+for the point-and-click view. The model is small:
 
 ```text no-run-button
-  Manage ............ one master switch. Off = nothing is enforced.
-  Network access .... which URLs agents reach    (allow/deny, default-deny)
-  Filesystem access . which paths agents mount   (allow/deny, default-deny)
-  MCP access ........ which tools agents call     (Cedar permit, default-deny)
-  Audit logs ........ every decision: who, what, when, allow/deny
+  Manage ............ the switch. Off = nothing is enforced.
+  Network .......... allowlist_v0, actions connect:tcp/udp, resources = hosts/CIDR
+  Filesystem ....... allowlist_v0, actions read/write,      resources = paths
+  MCP .............. cedar_v1, Cedar permit/forbid over MCP::Action
+  Audit ............ every decision (console) / sbx policy log (developer)
 ```
 
 Three ideas carry across all of it:
 
-1. **Define once, enforce everywhere.** The org sets policy centrally; every
-   developer's sandbox syncs and applies it. Developers can't opt out.
-2. **Default-deny.** You allow the few things a workflow needs; everything else is
-   blocked without being listed. Deny always overrides allow.
-3. **The master switch is the posture.** Policies are inert until **Manage → AI
-   governance** is on - so it's the first thing to check.
+1. **Two front doors, one source of truth.** Console (UI) and API (`curl`) write to
+   the same org policy store; `sbx` syncs it to every sandbox at login.
+2. **Default-deny, deny-wins.** Allow the few things a workflow needs; everything
+   else is blocked without being listed, and an explicit `deny` always overrides.
+3. **The switch is the posture.** Policies are inert until governance is on - so
+   `sbx policy ls` ("managed by your org") is the first thing to check.
 
 ## One rogue agent, four guardrails
 
-Imagine a single confused (or compromised) agent trying four things at once. With
-governance **enabled**, confirm the posture and watch policy answer each one:
+With org policy synced, confirm the posture and watch policy answer each attack:
 
 ```bash terminal-id=host
-dgov status
+sbx policy ls
+```
+
+```bash terminal-id=host
+sbx run claude
 ```
 
 ```bash terminal-id=host
 curl https://db.mysql.org:3306
 ```
 
-- **Network:** the exfil-to-MySQL attempt → **DENY** (`denyredingtondbteam`).
-- **Filesystem:** mounting `~/.aws` to read keys → **DENY** (default-deny; only
-  `./workdemo` is allowed).
-- **MCP:** calling `delete_repo` on GitHub → **DENY** (`demo-github-readonly`
-  permits read-only tools only).
-- **Audit:** all four attempts recorded with user, time, and decision.
-
-Read the trail one more time:
+- **Network:** exfil to MySQL → **403** (`denyredingtondbteam`, `*.mysql.org`).
+- **Filesystem:** mounting `~/.aws` → refused (default-deny; only `~/workdemo`
+  allowed).
+- **MCP:** `delete_repo` on GitHub → denied (`demo-github-readonly` permits read-only
+  tools only).
+- **Audit:** every attempt recorded - `sbx policy log` locally, Audit logs in the
+  console.
 
 ```bash terminal-id=host
-dgov audit ls
+exit
 ```
 
-## What you can do next
+```bash terminal-id=host
+sbx policy log
+```
 
-- In the **real console** at
-  [app.docker.com/accounts/$$org$$](https://app.docker.com/accounts/$$org$$), the
-  same screens are point-and-click, and AI Governance is a licensed product you
-  enable per org.
-- Stream **Audit logs** to a SIEM (Datadog, Splunk) via **Export & connectors** and
-  alert on `DENY` spikes.
-- Manage policies as code with the **Governance API** in CI.
+## Do it for real
+
+- **Console:** [app.docker.com/accounts/whalecollab](https://app.docker.com/accounts/whalecollab)
+  → AI Platform (AI Governance is a licensed product, enabled per org).
+- **API:** [docs.docker.com/reference/api/ai-governance](https://docs.docker.com/reference/api/ai-governance/latest/)
+  - author policies in Git, `POST` them from CI.
+- **Developers:** `sbx login`, then `sbx policy ls` / `reset` / `log`.
 
 > [!NOTE]
-> Everything in this lab was **simulated** - no real org, network, or API was ever
-> contacted. The commands, policy names, and decisions mirror the live console so
-> you can recognize it instantly when you open the real thing.
-
-That's AI Governance: set the guardrails once, and every agent in the org plays
-inside them.
+> Everything here was **simulated** - no real org, network, or API was contacted -
+> but every command and endpoint is the real one, so you'll recognize it instantly
+> when you open the console or hit the API for real.

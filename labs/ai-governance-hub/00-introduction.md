@@ -1,55 +1,57 @@
 # The AI Governance console
 
-Docker Hub gives an organization one place to **set guardrails for how AI coding
-agents behave**: which URLs they can reach, which local paths they can mount, which
-MCP tools they can call - and an audit log of every decision. In the real product
-it lives at
-[app.docker.com/accounts/$$org$$](https://app.docker.com/accounts/$$org$$) under
-**AI Platform**:
+Docker's **AI Governance** lets an organization set guardrails for how AI coding
+agents behave: which URLs they can reach, which paths they can mount, which MCP
+tools they can call - plus an audit log of every decision. There are **two real
+front doors**, and both write to the same source of truth:
 
 ```text no-run-button
-AI Platform
-  ├─ Manage            ← the master switch: AI governance on / off
-  ├─ Network access    ← which URLs agents can reach through the sandbox
-  ├─ Filesystem access ← which local paths agents can mount
-  ├─ MCP access        ← which MCP servers/tools are reachable (Cedar policy)
-  └─ Audit logs        ← every policy-enforcement event (who, what, when, decision)
+  ┌─────────────────────────────┐
+  │ Admin Console (web UI)       │   app.docker.com → AI Platform
+  │   point-and-click            │   Manage · Network · Filesystem · MCP · Audit
+  └──────────────┬──────────────┘
+                 │   same org policy store
+  ┌──────────────┴──────────────┐
+  │ Governance API (HTTP)        │   https://hub.docker.com/v2
+  │   curl / CI / automation     │   /orgs/{org}/governance/policies ...
+  └─────────────────────────────┘
+                 │  synced at login / `sbx policy reset`
+                 ▼
+         every developer sandbox  →  deny · allow · default-deny
 ```
 
 > [!NOTE]
-> **This lab is fully simulated.** There is no real Docker org, no network, and no
-> Governance API behind the terminal - every command is scripted so that everyone
-> sees the same allow/deny decisions, with nothing to install. The console is
-> point-and-click; this lab gives you an equivalent CLI, **`dgov`**, so you can
-> explore the same five screens from a terminal and *see* enforcement happen.
+> **This lab is fully simulated.** No real org, network, or Governance API is
+> contacted - every command is scripted so everyone sees the same decisions, with
+> nothing to install. The console screens are shown as the **real screenshots**
+> (it's a web UI). The terminal uses the **real** tools: `curl` against the
+> Governance API, and the `sbx` CLI developers already use.
 
-## Why it exists
+## The two interfaces you'll use
 
-An AI agent running in a sandbox can make network calls, mount directories, and
-call tools. Left ungoverned, a single rogue or confused agent can exfiltrate data,
-read your credentials, or call a destructive tool. **AI Governance** lets the org
-define the rules **once**, centrally, so every developer's sandbox enforces them -
-and developers can't turn them off.
-
-## Meet `dgov`
-
-`dgov` is this lab's thin CLI over the **same control plane the console writes to**.
-Start by asking it for help, then check the current posture:
+**Admin side - the Governance API** (`https://hub.docker.com/v2`). Authenticate a
+username + Personal Access Token for a bearer token:
 
 ```bash terminal-id=host
-dgov help
+curl -X POST https://hub.docker.com/v2/auth/token -H "Content-Type: application/json" -d @creds.json
 ```
+
+Take the `access_token` from the response and send it as `Authorization: Bearer
+$TOKEN` on every later call.
+
+**Developer side - `sbx`.** A developer's sandbox fetches the org policy at login
+and the daemon caches it. Right now nothing is synced, so there's no org policy:
 
 ```bash terminal-id=host
-dgov status
+sbx policy ls
 ```
 
-You'll see governance is **DISABLED** right now - exactly like the console
-screenshot, where the master toggle is off. That's our starting point.
+It reports **not managed** - only local sbx defaults. That's our starting point:
+governance exists in the console, but this machine isn't enforcing it yet.
 
 > [!TIP]
-> The two "front doors" to governance - the **console** (point-and-click) and the
-> **API** (`curl`, covered near the end) - write to the **same source of truth**.
-> `dgov` is simply a readable stand-in for both so you can learn the model quickly.
+> Reference: the full API is documented at
+> [docs.docker.com/reference/api/ai-governance](https://docs.docker.com/reference/api/ai-governance/latest/).
+> Everything below uses only those real endpoints and real `sbx` commands.
 
-Next: the **Manage** screen - the master switch that makes every other policy real.
+Next: the **Manage** screen - the switch that turns enforcement on.
