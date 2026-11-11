@@ -27,6 +27,31 @@ front doors**, and both write to the same source of truth:
 > (it's a web UI). The terminal uses the **real** tools: `curl` against the
 > Governance API, and the `sbx` CLI developers already use.
 
+## What you'll do - and where it lives
+
+Each section maps to one console screen or interface, so you always know *which*
+part of AI Governance you're looking at:
+
+```text no-run-button
+  SECTION (this lab)              CONSOLE SCREEN / INTERFACE        YOU USE
+  ──────────────────────────     ──────────────────────────        ──────────────
+  1 Manage: the switch       →   Manage (AI governance toggle)  →  sbx policy ls / reset
+  2 Network access           →   Network access                 →  API + sbx run · curl
+  3 Filesystem access        →   Filesystem access              →  API + sbx run --mount
+  4 MCP access               →   MCP access (Cedar)             →  API + sbx mcp tools
+  5 Audit logs               →   Audit logs                     →  sbx policy log
+  6 Governance as code       →   (the API behind all screens)   →  curl → the full flow
+  7 Putting it together      →   all of the above               →  one rogue agent, 4 guardrails
+```
+
+Everything flows from one switch and one policy store:
+
+```text no-run-button
+  Manage switch ON ──▶ org policy store ──(sbx sync)──▶ every sandbox enforces:
+                        network · filesystem · MCP          deny · allow · default-deny
+                        (+ audit log of every decision)
+```
+
 ## The two interfaces you'll use
 
 **Admin side - the Governance API** (`https://hub.docker.com/v2`). Authenticate a
