@@ -45,6 +45,26 @@ sandbox creation - even if a prompt injection tries to read your keys.
   (everything else)         → default-deny → refused
 ```
 
+## See it enforced
+
+Try to start a sandbox that mounts your AWS credentials. The `deny credentials` rule
+refuses it at creation:
+
+```bash terminal-id=host
+sbx run claude --mount ~/.aws
+```
+
+```text no-run-button
+ERROR: failed to create sandbox: status 403: mount policy denied:
+  ~/.aws: action=fs:mount:read blocked by rule 'deny credentials'
+```
+
+> [!TIP]
+> Open **Settings** (⚙) and turn **"Filesystem policy: deny credentials"** off, then
+> re-run the command - now the mount is permitted. Toggle it back on to restore the
+> guardrail. (And remember the master switch: with **AI governance** off, none of
+> these rules apply.)
+
 > [!TIP]
 > This is **defense in depth** with *credential isolation* (keeping real keys out of
 > the sandbox entirely): filesystem policy stops the agent **mounting** secret

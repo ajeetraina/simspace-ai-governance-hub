@@ -53,7 +53,15 @@ curl https://api.datadoghq.com
 ```
 
 The MySQL host is **403** (matched `denyredingtondbteam`); Datadog is **200**
-(allowed by `allowdatadog`). Leave the sandbox:
+(allowed by `allowdatadog`).
+
+> [!TIP]
+> Open **Settings** (⚙) and turn **"Network policy: denyredingtondbteam"** off, then
+> re-run the MySQL `curl` - it returns **200** now that the deny rule is gone. Toggle
+> it back on to restore the block. (Turning the master **AI governance** switch off
+> has the same effect for *every* rule at once.)
+
+Leave the sandbox:
 
 ```bash terminal-id=host
 exit

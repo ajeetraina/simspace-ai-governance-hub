@@ -21,8 +21,13 @@ state:
     active: false
   sandbox:
     inside: false
+  audit:
+    enabled: true # audit logging on (Manage screen default: stored in Docker Cloud)
   policy:
     blockexfil: false # a policy the learner creates via the API
+    denyNetwork: true # network deny rule 'denyredingtondbteam' (*.mysql.org) active
+    denyCreds: true # filesystem deny rule 'deny credentials' (~/.ssh, ~/.aws, ...) active
+    mcpReadonly: true # MCP Cedar policy 'demo-github-readonly' restricts to read-only tools
 
 settings:
   pace:
@@ -35,13 +40,38 @@ defaults:
     stderr: ["command not found - this command isn't part of the lab."]
     exit: 1
 
-# The Settings toggle (⚙, next to Reset) is the in-lab analog of the console's
-# Manage switch: off = the org policy is not enforced on this machine.
+# Settings toggles (⚙, next to Reset) - the in-lab analog of the switches an admin
+# controls in the console. The master switch gates everything; the per-policy
+# toggles let you turn one rule off and watch just that enforcement disappear.
 controls:
   - id: governance
     label: "AI governance (Manage switch)"
-    description: "On = org policy is synced and enforced in every sandbox. Off = sandboxes run ungoverned."
+    description: "Master switch. On = org policy is synced and enforced in every sandbox. Off = sandboxes run ungoverned (the per-policy toggles below do nothing)."
     state: governance.active
+    enabled: true
+    disabled: false
+  - id: deny-network
+    label: "Network policy: denyredingtondbteam"
+    description: "The deny rule for *.mysql.org. Off = the MySQL host is reachable again (allow/default-deny still apply to others)."
+    state: policy.denyNetwork
+    enabled: true
+    disabled: false
+  - id: deny-creds
+    label: "Filesystem policy: deny credentials"
+    description: "Blocks mounting ~/.ssh, ~/.aws, ~/.docker into a sandbox. Off = those paths can be mounted."
+    state: policy.denyCreds
+    enabled: true
+    disabled: false
+  - id: mcp-readonly
+    label: "MCP Cedar policy: demo-github-readonly"
+    description: "Cedar permit for read-only GitHub tools only. Off = write tools (create/merge/delete) are allowed too."
+    state: policy.mcpReadonly
+    enabled: true
+    disabled: false
+  - id: audit
+    label: "Audit logging"
+    description: "Record enforcement events (Docker Cloud / sbx policy log). Off = decisions are made but nothing is recorded."
+    state: audit.enabled
     enabled: true
     disabled: false
 
@@ -263,6 +293,15 @@ scenarios:
         - ""
         - "Local rules are suppressed under governance. Add --include-inactive to see them."
 
+  - id: sbx-policy-log-off
+    when:
+      command: [sbx, policy, log]
+      state: { audit.enabled: false }
+    then:
+      output:
+        - "Audit logging is disabled (Manage screen / Settings)."
+        - "Decisions are still enforced, but nothing is being recorded. 0 events."
+
   - id: sbx-policy-log-json
     when:
       command: [sbx, policy, log]
@@ -283,6 +322,31 @@ scenarios:
         - "catalog   network  db.mysql.org  denyredingtondbteam  explicit  1"
         - "catalog   network  example.com   default-deny         implicit  1"
 
+  # Filesystem enforcement: mounting a credential path. Blocked when governance is
+  # on AND the 'deny credentials' rule is active; toggle it off and the mount works.
+  - id: sbx-run-mount-deny
+    when:
+      command: [sbx, run]
+      args: { --mount: { oneOf: ["~/.aws", "~/.ssh", "~/.docker", "~/.aws:ro", "~/.ssh:ro"] } }
+      state: { governance.active: true, policy.denyCreds: true }
+    then:
+      output:
+        - "Creating sandbox..."
+        - { text: "ERROR: failed to create sandbox: status 403: mount policy denied:", delay: boot }
+        - "  {{ args.mount }}: action=fs:mount:read blocked by rule 'deny credentials'"
+        - "The sandbox never starts - the denied path never exists inside it."
+      exit: 1
+
+  - id: sbx-run-mount-allow
+    when:
+      command: [sbx, run]
+      args: { --mount: { any: true } }
+    then:
+      state: { sandbox.inside: true }
+      output:
+        - { text: "Creating sandbox (mounting {{ args.mount }})...", delay: boot }
+        - "The mount was permitted. You are now INSIDE the sandbox."
+
   - id: sbx-run
     when:
       command: [sbx, run]
@@ -293,6 +357,28 @@ scenarios:
         - { text: "Creating sandbox with agent '{{ args.0 }}'...", delay: boot }
         - "microVM booted. Outbound traffic is routed through the sbx proxy that enforces org network policy."
         - "You are now INSIDE the sandbox. Try the enforcement tests, then run `exit` to leave."
+
+  # MCP enforcement: which GitHub tools the Cedar policy admits through the gateway.
+  - id: sbx-mcp-tools-readonly
+    when:
+      command: [sbx, mcp, tools]
+      args: { 0: { oneOf: [github] } }
+      state: { policy.mcpReadonly: true }
+    then:
+      output:
+        - "github tools via Docker MCP gateway - governed by Cedar policy 'demo-github-readonly':"
+        - "  permitted : search_repositories, get_file_contents, list_issues"
+        - "  denied    : create_pull_request, merge_pull_request, delete_repo  (no permit matches)"
+
+  - id: sbx-mcp-tools-open
+    when:
+      command: [sbx, mcp, tools]
+      args: { 0: { oneOf: [github] } }
+    then:
+      output:
+        - "github tools via Docker MCP gateway - no Cedar restriction active:"
+        - "  permitted : search_repositories, get_file_contents, list_issues,"
+        - "              create_pull_request, merge_pull_request, delete_repo  ← write tools now allowed"
 
   - id: shell-exit
     when:
@@ -306,7 +392,20 @@ scenarios:
   # Enforcement: the same request, governed vs ungoverned. Governed by state so
   # flipping the Manage switch (or `sbx policy reset`/`sbx login`) changes it.
   # ===========================================================================
-  - id: curl-mysql-governed
+  - id: curl-mysql-blocked
+    when:
+      command: [curl]
+      args: { 0: { oneOf: ["https://db.mysql.org", "db.mysql.org", "https://db.mysql.org:3306"] } }
+      state: { governance.active: true, policy.denyNetwork: true }
+    then:
+      output:
+        - { text: "* Trying db.mysql.org...", delay: net }
+        - "* Request evaluated by the sbx proxy against org policy"
+        - "< HTTP/1.1 403 Forbidden   (matched 'denyredingtondbteam': deny connect:tcp,udp *.mysql.org)"
+      exit: 1
+
+  # Governed, but the 'denyredingtondbteam' rule is toggled OFF in Settings.
+  - id: curl-mysql-rule-off
     when:
       command: [curl]
       args: { 0: { oneOf: ["https://db.mysql.org", "db.mysql.org", "https://db.mysql.org:3306"] } }
@@ -314,9 +413,7 @@ scenarios:
     then:
       output:
         - { text: "* Trying db.mysql.org...", delay: net }
-        - "* Request evaluated by the sbx proxy against org policy"
-        - "< HTTP/1.1 403 Forbidden   (matched 'denyredingtondbteam': deny connect:tcp,udp *.mysql.org)"
-      exit: 1
+        - "< HTTP/1.1 200 OK   ← reachable! the 'denyredingtondbteam' deny rule is OFF"
 
   - id: curl-mysql-ungoverned
     when:

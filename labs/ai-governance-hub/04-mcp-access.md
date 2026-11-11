@@ -37,6 +37,24 @@ permit(principal, action == MCP::Action::"call_tool", resource is MCP::Tool)
 So a governed agent can *search* repos and *read* files, but `create_pull_request`,
 `merge_pull_request`, or `delete_repo` are **denied** - no `permit` covers them.
 
+## See it enforced
+
+Ask the Docker MCP gateway which GitHub tools the policy admits:
+
+```bash terminal-id=host
+sbx mcp tools github
+```
+
+```text no-run-button
+  permitted : search_repositories, get_file_contents, list_issues
+  denied    : create_pull_request, merge_pull_request, delete_repo  (no permit matches)
+```
+
+> [!TIP]
+> Open **Settings** (⚙) and turn **"MCP Cedar policy: demo-github-readonly"** off,
+> then re-run `sbx mcp tools github` - the write tools (`create`/`merge`/`delete`)
+> become permitted. Toggle it back on to re-apply least privilege.
+
 ## Create an MCP policy with the API
 
 Same endpoint as any policy; the body is a `cedar_v1` object (seeded as

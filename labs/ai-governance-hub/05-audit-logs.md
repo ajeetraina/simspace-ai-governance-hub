@@ -46,5 +46,18 @@ sbx policy log --json
 > agent - and stream those events to a SIEM via **Export & connectors**. `sbx policy
 > log --json` is the same signal, locally, for a single machine.
 
+## Turn recording off
+
+Audit logging is on by default (the Manage screen stores events in Docker Cloud).
+Open **Settings** (⚙), turn **"Audit logging"** off, then look again:
+
+```bash terminal-id=host
+sbx policy log
+```
+
+Decisions are still **enforced** - but nothing is **recorded**, so you lose the
+trail. In the real console, audit storage and delivery are configured on the Manage
+screen and the Audit logs tabs. Toggle it back on to resume recording.
+
 A `deny` spike is the bridge to alerting. Next, the full programmatic flow -
 **governance as code**.
