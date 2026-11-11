@@ -8,6 +8,25 @@ Unlike network and filesystem policies (`allowlist_v0`), MCP policies use the
 `cedar_v1` type: rules are written in **Cedar**, a purpose-built authorization
 language, carried in a single `text` field against a published `schema_url`.
 
+Every tool call an agent makes passes through one governed gateway, and Cedar
+decides per tool:
+
+```text no-run-button
+   agent: "call tool X on github"
+        │
+        ▼
+   ┌──────────────────────────────┐
+   │  Docker MCP gateway          │
+   │  Cedar: demo-github-readonly │
+   └──────────────┬───────────────┘
+                  ▼
+   a permit statement matches?  ──yes──▶  ✓ tool runs   search_repositories · get_file_contents · list_issues
+                  │ no
+   (no permit covers it)        ───────▶  ✗ denied       create_pull_request · merge_pull_request · delete_repo
+```
+
+Cedar is **default-deny** too: a tool with no matching `permit` is refused.
+
 ## Read the MCP policy with the API
 
 ```bash terminal-id=host

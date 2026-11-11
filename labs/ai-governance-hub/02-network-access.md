@@ -6,6 +6,27 @@ a network policy is an `allowlist_v0` object whose rules carry `actions`
 (`connect:tcp` / `connect:udp`), a `decision` (`allow` / `deny`), and `resources`
 (hosts, `*.wildcards`, or CIDRs).
 
+**What actually happens on every request** an agent makes from inside a sandbox:
+
+```text no-run-button
+   agent in sandbox
+        │   curl https://db.mysql.org:3306
+        ▼
+   ┌─────────────────────────┐
+   │  sbx proxy  (checks the │   evaluated once per request
+   │  org policy, in order)  │
+   └───────────┬─────────────┘
+               ▼
+   1. a DENY rule matches?  ──yes──▶  ✗ 403 Forbidden     denyredingtondbteam → *.mysql.org
+               │ no
+   2. an ALLOW rule matches? ─yes──▶  ✓ 200 OK            allowdatadog → api.datadoghq.com
+               │ no
+   3. nothing matched        ───────▶  ✗ 403 default-deny  (not on any allow list)
+```
+
+Read it top-down: **deny wins**, then **allow**, and anything left over is blocked by
+**default-deny**. You only list what you trust; everything else is refused for free.
+
 ## Read a policy with the API
 
 The org `whalecollab` already has a deny policy, `denyredingtondbteam`. Fetch it by

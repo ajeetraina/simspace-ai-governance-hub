@@ -12,6 +12,18 @@ delivery**, **History**, **Export & connectors** - with filters for **Date range
 **Activity**, **User**, **Harness**, and **Decision**. That org-wide view is a
 console (and export/SIEM) feature.
 
+Where every allow/deny decision goes:
+
+```text no-run-button
+   each policy decision (allow / deny)
+        │
+        ├──▶  Docker Cloud audit log  ──▶  Console: Audit logs  (filter · CSV · SIEM via Export & connectors)
+        │
+        └──▶  sbx policy log           ──▶  the developer's own machine, right now
+
+   Audit logging OFF  →  decisions are still ENFORCED, but nothing is recorded.
+```
+
 ## The developer-side view: `sbx policy log`
 
 On a developer's machine, `sbx` exposes the local enforcement decisions the sandbox

@@ -5,6 +5,20 @@ can mount to*. In the API it's the same `allowlist_v0` shape as a network policy
 but the rule `actions` are `read` / `write` and `resources` are **paths** (`/data`,
 `/data/**`) instead of hosts.
 
+The key difference from network: the check happens **once, at sandbox creation** - a
+denied path is refused *before* the microVM boots, so it never exists inside:
+
+```text no-run-button
+   sbx run claude --mount <path>
+        │
+        ▼
+   policy checked BEFORE the microVM starts
+        │
+   ~/workdemo/**   ──allow──────▶  ✓ mounted (read+write)   → sandbox starts
+   ~/.ssh ~/.aws   ──deny───────▶  ✗ 403 mount denied        → sandbox NEVER starts
+   anything else   ──default-deny─▶  ✗ 403                    → sandbox NEVER starts
+```
+
 > [!NOTE]
 > The API derives a policy's `domain` from its rule actions: `connect:tcp`/`udp`
 > → `network`; `read`/`write` → `filesystem`. All actions in one rule must be the

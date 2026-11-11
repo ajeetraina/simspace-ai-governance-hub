@@ -5,6 +5,24 @@ pattern you'd put in a script or CI job so policies live in version control, not
 in someone's browser. Base URL: `https://hub.docker.com/v2`. Reference:
 [docs.docker.com/reference/api/ai-governance](https://docs.docker.com/reference/api/ai-governance/latest/).
 
+The pipeline - author once, enforce everywhere:
+
+```text no-run-button
+   policy.json in Git
+        │   CI job  (or you, with curl)
+        ▼
+   POST /v2/.../governance/policies ──┐
+                                      ├──▶  ORG POLICY STORE  ◀── Admin Console writes here too
+   (auth → create policy → add rule) ─┘        (one source of truth)
+                                                     │
+                                       sbx login / sbx policy reset
+                                                     ▼
+                                   every developer sandbox  →  deny · allow · default-deny
+```
+
+Both front doors (API and Console) write to the **same store**; `sbx` pulls it to
+every machine. Now walk the four API steps.
+
 ## 1. Authenticate → bearer token
 
 `creds.json` holds a Docker username and a Personal Access Token (`dckr_pat_…`) or
