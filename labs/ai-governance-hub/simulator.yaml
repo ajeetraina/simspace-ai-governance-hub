@@ -1,0 +1,424 @@
+version: "2.0"
+
+metadata:
+  id: ai-governance-hub
+  title: "Docker AI Governance - Admin Console"
+  summary: >
+    Drive the Docker Hub AI Governance console from a terminal. Flip the master
+    switch, read network / filesystem / MCP policies, watch enforcement, and read
+    the audit log - every command simulated, so everyone sees the same decisions.
+
+# ---------------------------------------------------------------------------
+# In-memory state. Scenarios read it in `when.state` and write it in `then.state`.
+# `governance.active` is also wired to a Settings toggle (see `controls:`) so a
+# learner can flip the master switch the same way an admin does in the console.
+# It starts OFF to match the console screenshot - the arc turns it ON in Lab 1.
+# ---------------------------------------------------------------------------
+state:
+  org: "whalecollab" # the organization whose console we're driving
+  governance:
+    active: false # the master "AI governance" toggle on the Manage screen
+  policy:
+    blockpaste: false # a network policy the learner creates in the Network lab
+
+settings:
+  pace:
+    sync: 600 # simulated policy sync / console write
+    net: 500 # simulated network request through the sandbox proxy
+
+defaults:
+  unmatched:
+    stderr:
+      - "command not found - this command isn't part of the lab."
+      - "Try `dgov help` to see the governance commands this lab simulates."
+    exit: 1
+
+# Settings-dialog toggles (the gear next to Reset) - the in-lab analog of the
+# master switch an admin flips in app.docker.com. Off = policies don't take effect.
+controls:
+  - id: governance
+    label: "AI governance (master switch)"
+    description: "On = org policies are enforced in every sandbox. Off = policies exist but do nothing (like the console toggle turned off)."
+    state: governance.active
+    enabled: true
+    disabled: false
+
+scenarios:
+  # ===========================================================================
+  # dgov - the thin lab CLI over the Docker AI Governance control plane.
+  # It mirrors the five console screens: Manage, Network, Filesystem, MCP, Audit.
+  # ===========================================================================
+  - id: dgov-help
+    when:
+      command: [dgov]
+      args: { 0: { oneOf: [help, --help, -h] } }
+    then:
+      output:
+        - "dgov - drive the Docker AI Governance console from the terminal (simulated)"
+        - ""
+        - "Usage: dgov <command>"
+        - ""
+        - "  status                     show whether AI governance is enabled"
+        - "  enable | disable           flip the master switch (Manage screen)"
+        - "  net ls | net show <name>   network access policies"
+        - "  fs  ls | fs  show <name>   filesystem access policies"
+        - "  mcp ls | mcp show <name>   MCP access policies (Cedar)"
+        - "  audit ls                   policy-enforcement events"
+        - ""
+        - "Every command is simulated - no real org, network, or API is contacted."
+
+  # --- Manage screen: the master switch ------------------------------------
+  - id: dgov-status-on
+    when:
+      command: [dgov, status]
+      state: { governance.active: true }
+    then:
+      output:
+        - "AI governance:  ENABLED"
+        - "Organization:   {{ state.org }}"
+        - "Audit logs:     recording (member actions, timestamps, IPs) in Docker Cloud"
+        - ""
+        - "Policies are enforced in every sandbox for this org."
+
+  - id: dgov-status-off
+    when:
+      command: [dgov, status]
+    then:
+      output:
+        - "AI governance:  DISABLED"
+        - "Organization:   {{ state.org }}"
+        - ""
+        - "Policies below exist but DO NOT take effect until governance is enabled."
+        - "Enable it with `dgov enable` (or the master switch in Settings ⚙)."
+
+  - id: dgov-enable-already
+    when:
+      command: [dgov, enable]
+      state: { governance.active: true }
+    then:
+      output: ["AI governance is already enabled for {{ state.org }}."]
+
+  - id: dgov-enable
+    when:
+      command: [dgov, enable]
+    then:
+      state: { governance.active: true }
+      output:
+        - { text: "Enabling AI governance for {{ state.org }}...", delay: sync }
+        - "✔ Master switch ON."
+        - "✔ Network, filesystem, and MCP policies are now enforced in every sandbox."
+        - "✔ Audit logging started (stored in Docker Cloud)."
+
+  - id: dgov-disable
+    when:
+      command: [dgov, disable]
+    then:
+      state: { governance.active: false }
+      output:
+        - "⚠ AI governance DISABLED for {{ state.org }}."
+        - "Policies still exist in the console but no longer take effect. Sandboxes run ungoverned."
+
+  # --- Network access screen ------------------------------------------------
+  # `net ls` has two forms: the base seeded list, and a variant once the learner
+  # has created `blockpaste` (gated on state, so it must come first).
+  - id: dgov-net-ls-created
+    when:
+      command: [dgov, net, ls]
+      state: { policy.blockpaste: true }
+    then:
+      output:
+        - "NETWORK ACCESS - policies for {{ state.org }}   (define which URLs agents can reach)"
+        - ""
+        - "POLICY                 SCOPE         RULES     UPDATED"
+        - "blockpaste             Organization  1 deny    just now"
+        - "denyredingtondbteam    Organization  1 deny    Sep 17, 2026"
+        - "allowdatadog           Organization  1 allow   Sep 09, 2026"
+        - "allowmichelangelo      Organization  1 allow   Aug 20, 2026"
+        - "allowfirecrawl         Organization  1 allow   Aug 18, 2026"
+        - "allownovu              Organization  1 allow   Aug 08, 2026"
+        - "allowdynatrace         Organization  1 allow   Aug 06, 2026"
+
+  - id: dgov-net-ls
+    when:
+      command: [dgov, net, ls]
+    then:
+      output:
+        - "NETWORK ACCESS - policies for {{ state.org }}   (define which URLs agents can reach)"
+        - ""
+        - "POLICY                 SCOPE         RULES     UPDATED"
+        - "denyredingtondbteam    Organization  1 deny    Sep 17, 2026"
+        - "allowdatadog           Organization  1 allow   Sep 09, 2026"
+        - "allowmichelangelo      Organization  1 allow   Aug 20, 2026"
+        - "allowfirecrawl         Organization  1 allow   Aug 18, 2026"
+        - "allownovu              Organization  1 allow   Aug 08, 2026"
+        - "allowdynatrace         Organization  1 allow   Aug 06, 2026"
+        - ""
+        - "Open one with `dgov net show denyredingtondbteam`."
+
+  - id: dgov-net-show-deny
+    when:
+      command: [dgov, net, show]
+      args: { 0: { oneOf: [denyredingtondbteam] } }
+    then:
+      output:
+        - "Network access / denyredingtondbteam"
+        - ""
+        - "  Scope      Organization"
+        - "  Updated    Sep 17, 2026"
+        - "  Approval   Not required"
+        - ""
+        - "  Rules   (deny always takes precedence over allow)"
+        - "  ACTION  NAME            PROTO     MATCHES"
+        - "  Deny    denyredington   TCP, UDP  All traffic to *.mysql.org"
+
+  - id: dgov-net-show-datadog
+    when:
+      command: [dgov, net, show]
+      args: { 0: { oneOf: [allowdatadog] } }
+    then:
+      output:
+        - "Network access / allowdatadog"
+        - ""
+        - "  Scope      Organization"
+        - "  Updated    Sep 09, 2026"
+        - "  Approval   Not required"
+        - ""
+        - "  Rules"
+        - "  ACTION  NAME            PROTO  MATCHES"
+        - "  Allow   allow-datadog   TCP    api.datadoghq.com"
+
+  - id: dgov-net-show-other
+    when:
+      command: [dgov, net, show]
+      args: { 0: { any: true } }
+    then:
+      output:
+        - "Network access / {{ args.0 }}"
+        - ""
+        - "  Scope      Organization"
+        - "  Approval   Not required"
+        - ""
+        - "  Rules"
+        - "  ACTION  NAME              PROTO  MATCHES"
+        - "  Allow   allow-{{ args.0 }}  TCP    (single allow rule - open the console for full detail)"
+
+  - id: dgov-net-create
+    when:
+      command: [dgov, net, create]
+      args: { --name: { any: true }, --deny: { any: true } }
+    then:
+      state: { policy.blockpaste: true }
+      output:
+        - { text: "Creating network policy '{{ args.name }}' (scope: Organization)...", delay: sync }
+        - "✔ Added rule: Deny TCP,UDP to {{ args.deny }}"
+        - "✔ Policy '{{ args.name }}' created. It appears in the console and in `dgov net ls`."
+        - "  Deny rules take effect immediately. (Allow rules can require approval.)"
+
+  # --- Filesystem access screen --------------------------------------------
+  - id: dgov-fs-ls
+    when:
+      command: [dgov, fs, ls]
+    then:
+      output:
+        - "FILESYSTEM ACCESS - policies for {{ state.org }}   (which local paths agents can mount)"
+        - ""
+        - "POLICY           SCOPE         RULES     UPDATED"
+        - "allowcatalogs    Organization  1 allow   Jul 13, 2026"
+        - "allowcatalog     Organization  1 allow   Jul 13, 2026"
+        - "allowproj        Organization  1 allow   Jul 06, 2026"
+        - "allowsbxlab      Organization  1 allow   Jul 03, 2026"
+        - "allowin          Organization  1 allow   Jun 25, 2026"
+        - ""
+        - "Open one with `dgov fs show allowcatalog`."
+
+  - id: dgov-fs-show
+    when:
+      command: [dgov, fs, show]
+      args: { 0: { any: true } }
+    then:
+      output:
+        - "Filesystem access / {{ args.0 }}"
+        - ""
+        - "  Scope      Organization"
+        - "  Approval   Not required"
+        - ""
+        - "  Rules   (default-deny: a path not covered by an allow rule cannot be mounted)"
+        - "  ACTION  NAME              MOUNT     MATCHES"
+        - "  Allow   allow-{{ args.0 }}  read-write  ./workdemo (and subpaths)"
+
+  # --- MCP access screen (Cedar) -------------------------------------------
+  - id: dgov-mcp-ls
+    when:
+      command: [dgov, mcp, ls]
+    then:
+      output:
+        - "MCP ACCESS - policies for {{ state.org }}   (which MCP servers are reachable via Docker's gateway)"
+        - ""
+        - "POLICY                 SCOPE         CEDAR POLICY                                   UPDATED"
+        - "allowalltools          Organization  permit(principal, action == MCP::Action::...  Aug 03, 2026"
+        - "allowikimcp            Organization  permit(principal, action == MCP::Action::...  Aug 03, 2026"
+        - "demo-github-readonly   Organization  permit(principal, action == MCP::Action::...  Jul 06, 2026"
+        - ""
+        - "Open one with `dgov mcp show demo-github-readonly`."
+
+  - id: dgov-mcp-show-github
+    when:
+      command: [dgov, mcp, show]
+      args: { 0: { oneOf: [demo-github-readonly] } }
+    then:
+      output:
+        - "MCP access / demo-github-readonly"
+        - ""
+        - "  Scope      Organization"
+        - "  Updated    Jul 06, 2026"
+        - ""
+        - "  Cedar policy"
+        - "  permit("
+        - "    principal,"
+        - "    action == MCP::Action::\"call_tool\","
+        - "    resource"
+        - "  )"
+        - "  when {"
+        - "    resource.server == \"github\" &&"
+        - "    resource.tool in [\"search_repositories\", \"get_file_contents\", \"list_issues\"]"
+        - "  };"
+        - ""
+        - "  Read-only GitHub tools are permitted; write tools (create, merge, delete) are not."
+
+  - id: dgov-mcp-show-other
+    when:
+      command: [dgov, mcp, show]
+      args: { 0: { any: true } }
+    then:
+      output:
+        - "MCP access / {{ args.0 }}"
+        - ""
+        - "  Scope      Organization"
+        - ""
+        - "  Cedar policy"
+        - "  permit( principal, action == MCP::Action::\"call_tool\", resource );"
+        - ""
+        - "  Open the console for the full Cedar document."
+
+  # --- Audit logs screen ----------------------------------------------------
+  - id: dgov-audit-ls-on
+    when:
+      command: [dgov, audit, ls]
+      state: { governance.active: true }
+    then:
+      output:
+        - "AUDIT LOGS - policy-enforcement events for {{ state.org }}"
+        - ""
+        - "TIME (UTC)         USER       HARNESS  RESOURCE            ACTIVITY        DECISION"
+        - "just now           michelangelo  claude   db.mysql.org:3306   net:connect     DENY"
+        - "just now           michelangelo  claude   api.datadoghq.com   net:connect     ALLOW"
+        - "2 min ago          leonardo      codex    ./workdemo          fs:mount:rw     ALLOW"
+        - "5 min ago          leonardo      codex    ~/.aws              fs:mount:rw     DENY"
+        - ""
+        - "DENY events are the deny rules and default-deny doing their job. Filter in the"
+        - "console by Date range, Activity, User, Harness, or Decision. Export via CSV."
+
+  - id: dgov-audit-ls-off
+    when:
+      command: [dgov, audit, ls]
+    then:
+      output:
+        - "AUDIT LOGS - policy-enforcement events for {{ state.org }}"
+        - ""
+        - "0 matching records."
+        - ""
+        - "AI governance is disabled, so no policies are being enforced and nothing is"
+        - "being recorded. Enable it with `dgov enable`, then re-run a demo."
+
+  # Bare `dgov` or any unknown subcommand falls through to here. It must come
+  # AFTER every specific dgov scenario because `command: [dgov]` prefix-matches
+  # them all (first match wins, top-to-bottom).
+  - id: dgov-fallback
+    when:
+      command: [dgov]
+    then:
+      output:
+        - "dgov - Docker AI Governance (simulated). Run `dgov help` for commands."
+
+  # ===========================================================================
+  # See enforcement for real: two requests through a governed sandbox.
+  # Gated on governance.active - with it OFF, the sandbox is ungoverned and both
+  # requests succeed (the whole point of the master switch).
+  # ===========================================================================
+  - id: curl-mysql-governed
+    when:
+      command: [curl]
+      args: { 0: { oneOf: ["https://db.mysql.org", "db.mysql.org", "https://db.mysql.org:3306"] } }
+      state: { governance.active: true }
+    then:
+      output:
+        - { text: "* Trying db.mysql.org...", delay: net }
+        - "* Request evaluated by sandbox proxy against org policy"
+        - "curl: (56) Recv failure: blocked by AI governance policy 'denyredingtondbteam'"
+        - "  rule: Deny TCP,UDP *.mysql.org   →   HTTP 403"
+      exit: 56
+
+  - id: curl-mysql-ungoverned
+    when:
+      command: [curl]
+      args: { 0: { oneOf: ["https://db.mysql.org", "db.mysql.org", "https://db.mysql.org:3306"] } }
+    then:
+      output:
+        - { text: "* Trying db.mysql.org...", delay: net }
+        - "* No org policy synced - request is NOT evaluated (ungoverned sandbox)"
+        - "HTTP/1.1 200 OK"
+        - "(enable AI governance with `dgov enable` to block this)"
+
+  - id: curl-datadog-governed
+    when:
+      command: [curl]
+      args: { 0: { oneOf: ["https://api.datadoghq.com", "api.datadoghq.com"] } }
+      state: { governance.active: true }
+    then:
+      output:
+        - { text: "* Trying api.datadoghq.com...", delay: net }
+        - "* Allowed by AI governance policy 'allowdatadog'"
+        - "HTTP/1.1 200 OK"
+
+  - id: curl-datadog-ungoverned
+    when:
+      command: [curl]
+      args: { 0: { oneOf: ["https://api.datadoghq.com", "api.datadoghq.com"] } }
+    then:
+      output:
+        - { text: "* Trying api.datadoghq.com...", delay: net }
+        - "HTTP/1.1 200 OK"
+
+  # ===========================================================================
+  # Governance-as-code: the same control plane over HTTP. Simulated responses.
+  # ===========================================================================
+  - id: docker-login
+    when:
+      command: [docker, login]
+    then:
+      output:
+        - "Authenticating with existing credentials..."
+        - "Login Succeeded"
+
+  - id: api-post-policy
+    when:
+      command: [curl]
+      args: { 0: { any: true }, -X: { oneOf: [POST] } }
+    then:
+      output:
+        - { text: "> POST /v2/orgs/{{ state.org }}/governance/policies", delay: sync }
+        - "< HTTP/1.1 201 Created"
+        - '{ "id": "pol_7hk2...", "name": "blockpaste", "type": "network", "scope": "organization", "rules": 1 }'
+        - ""
+        - "Same source of truth as the console - this policy now shows up in `dgov net ls`."
+      state: { policy.blockpaste: true }
+
+  - id: api-get-policies
+    when:
+      command: [curl]
+      args: { 0: { any: true } }
+    then:
+      output:
+        - "> GET /v2/orgs/{{ state.org }}/governance/policies"
+        - "< HTTP/1.1 200 OK"
+        - '{ "policies": [ { "name": "denyredingtondbteam", "type": "network", "rules": 1 }, ... ] }'

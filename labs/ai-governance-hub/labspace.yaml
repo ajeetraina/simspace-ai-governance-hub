@@ -1,0 +1,76 @@
+title: "Docker AI Governance - the Admin Console, in a terminal"
+description: >
+  Docker Hub's AI Governance console lets an org set guardrails for how AI coding
+  agents use the network, the filesystem, and MCP tools - and review every decision
+  in an audit log. This lab recreates that console as a simulated terminal: flip the
+  master switch, read and create policies, watch enforcement allow and deny live, and
+  read the audit trail. Nothing is real - no org, network, or API is contacted - so
+  every learner sees the exact same allow/deny decisions, with nothing to install.
+
+# Landing-page card (shown only when the repo has 2+ labs).
+catalog:
+  icon: shield_lock
+  description: "Drive Docker Hub's AI Governance console from a terminal: master switch, network/filesystem/MCP policies, live allow/deny, and the audit log. Fully simulated."
+  tags: ["ai governance", "sandbox", "policy", "mcp", "audit", "security"]
+  estimatedMinutes: 40
+
+# Command behaviour lives in simulator.yaml (relative to this file).
+simulator: simulator.yaml
+
+# One terminal - an admin's shell with the lab's `dgov` CLI on the PATH.
+terminals:
+  - id: host
+    title: Terminal
+    icon: terminal
+
+# Seed the virtual filesystem. `ls`/`cat` reflect these immediately.
+files:
+  README.md: |
+    # Docker AI Governance - admin workspace (simulated)
+
+    Everything here is scripted - no real Docker, org, network, or Governance API
+    is contacted, so every learner sees the same allow/deny decisions.
+
+    The lab gives you one command, `dgov`, a thin simulated CLI over the same
+    control plane the Docker Hub console writes to. It mirrors the five console
+    screens:
+
+      dgov status | enable | disable      the Manage screen (master switch)
+      dgov net ls | net show <name>       Network access policies
+      dgov fs  ls | fs  show <name>       Filesystem access policies
+      dgov mcp ls | mcp show <name>       MCP access policies (Cedar)
+      dgov audit ls                       Audit logs
+
+    Run `dgov help` any time.
+  blockpaste.json: |
+    {
+      "name": "blockpaste",
+      "type": "network",
+      "scope": "organization",
+      "rules": [
+        { "action": "deny", "protocols": ["tcp", "udp"], "match": "paste.ee" }
+      ]
+    }
+
+# Ordered instruction pages (markdown), rendered in the left-hand panel.
+sections:
+  - title: "The AI Governance console"
+    contentPath: 00-introduction.md
+  - title: "Manage: the master switch"
+    contentPath: 01-manage.md
+  - title: "Network access"
+    contentPath: 02-network-access.md
+  - title: "Filesystem access"
+    contentPath: 03-filesystem-access.md
+  - title: "MCP access"
+    contentPath: 04-mcp-access.md
+  - title: "Audit logs"
+    contentPath: 05-audit-logs.md
+  - title: "Governance as code (the API)"
+    contentPath: 06-governance-as-code.md
+  - title: "Putting it together"
+    contentPath: 07-capstone.md
+
+# $$name$$ in markdown is replaced with these values.
+variables:
+  org: whalecollab
