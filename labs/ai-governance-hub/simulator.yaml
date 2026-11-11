@@ -116,7 +116,34 @@ scenarios:
         - '  "resources": ["api.datadoghq.com"]'
         - '}'
 
-  # 3. Create a policy (allowlist_v0). POST to the /policies collection.
+  # 3a. Create an MCP policy (cedar_v1). Same /policies endpoint, but the body is
+  #     mcp-policy.json - matched on -d so it returns a Cedar response, not a
+  #     network one. Must precede the generic create scenario below.
+  - id: api-create-mcp-policy
+    when:
+      command: [curl]
+      args:
+        0: { oneOf: ["https://hub.docker.com/v2/orgs/whalecollab/governance/policies"] }
+        -X: { oneOf: [POST] }
+        -d: { oneOf: ["@mcp-policy.json"] }
+    then:
+      output:
+        - { text: "> POST /v2/orgs/whalecollab/governance/policies", delay: sync }
+        - "< HTTP/2 201"
+        - '{'
+        - '  "id": "pol_07hk2mcpdemo0github0readonly",'
+        - '  "name": "demo-github-readonly",'
+        - '  "org": "whalecollab",'
+        - '  "scope": { "teams": [] },'
+        - '  "cedar_v1": {'
+        - '    "schema_url": "https://schemas.docker.com/policy/cedar/v1/mcp/v0",'
+        - '    "text": "permit(principal, action == MCP::Action::\\"call_tool\\", resource is MCP::Tool)\\n  when { resource.server == \\"github\\" && resource.tool in [...] };"'
+        - '  },'
+        - '  "created_at": "2026-11-11T00:00:00Z",'
+        - '  "updated_at": "2026-11-11T00:00:00Z"'
+        - '}'
+
+  # 3b. Create a network/filesystem policy (allowlist_v0). POST to /policies.
   - id: api-create-policy
     when:
       command: [curl]
